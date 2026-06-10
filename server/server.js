@@ -161,6 +161,11 @@ const fcmTokens = new Map();
 // timestamp of when that keypair was generated. Lets clients detect
 // rotation (a peer reinstalled, switched devices, or was impersonated).
 const pubKeys = new Map();
+// username -> base64 ed25519 public key. First device to register a
+// username locks in its key; subsequent registers with a different key
+// are rejected with "username_taken_by_another_device". Lives in memory
+// only — server restart releases all bindings.
+const usernamePubEd = new Map();
 // callId -> { caller, callee, peers:Set }
 const calls = new Map();
 // username -> array of pending chat messages {id, from, ciphertext, ts}
@@ -317,10 +322,66 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
 
-      // --- Registration: client announces its username ---
+      // --- Registration: client announces its username and proves ownership
+      // by signing a challenge with an Ed25519 key the server has on file
+      // for this username (or which it stores as authoritative on first use).
       case 'register': {
-        const name = (msg.username || '').trim().toLowerCase();
+        const name    = (msg.username || '').trim().toLowerCase();
+        const pubEd   = msg.pubkey_ed;     // base64 raw 32-byte ed25519 public key
+        const authTs  = msg.auth_ts;       // ms since epoch
+        const authSig = msg.auth_sig;      // base64 ed25519 signature
         if (!name) { send(ws, { type: 'register_error', reason: 'empty' }); return; }
+        if (!pubEd || typeof authTs !== 'number' || !authSig) {
+          send(ws, { type: 'register_error', reason: 'auth_missing' }); return;
+        }
+
+        // Reject stale/replayed challenges. ±5 minutes of server clock.
+        const now = Date.now();
+        if (Math.abs(now - authTs) > 5 * 60 * 1000) {
+          send(ws, { type: 'register_error', reason: 'auth_stale' }); return;
+        }
+
+        // Verify the Ed25519 signature over `register:<username>:<ts>`.
+        const challenge = `register:${name}:${authTs}`;
+        let sigValid = false;
+        try {
+          const pubKeyBuf = Buffer.from(pubEd, 'base64');
+          if (pubKeyBuf.length !== 32) throw new Error('bad pubkey length');
+          // Node's crypto wants the raw 32-byte ed25519 key wrapped as JWK.
+          // base64url has no padding and uses -/_ instead of +/=.
+          const xB64Url = pubKeyBuf.toString('base64')
+              .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          const publicKey = crypto.createPublicKey({
+            key: { kty: 'OKP', crv: 'Ed25519', x: xB64Url },
+            format: 'jwk',
+          });
+          sigValid = crypto.verify(
+              null,
+              Buffer.from(challenge),
+              publicKey,
+              Buffer.from(authSig, 'base64'));
+        } catch (err) {
+          console.log(`auth verify error for ${name}: ${err.message}`);
+        }
+        if (!sigValid) {
+          send(ws, { type: 'register_error', reason: 'auth_failed' }); return;
+        }
+
+        // Username binding: the FIRST device to register a username wins
+        // and from then on only signatures from that same Ed25519 key can
+        // re-register as that username. NOTE: this binding lives only in
+        // memory; a process restart wipes it. Persistent storage is a
+        // follow-up (see THREAT_MODEL §6 + roadmap).
+        const boundPubEd = usernamePubEd.get(name);
+        if (boundPubEd && boundPubEd !== pubEd) {
+          console.log(`auth: rejected ${name} — different ed25519 key`);
+          send(ws, { type: 'register_error', reason: 'username_taken_by_another_device' });
+          return;
+        }
+        if (!boundPubEd) {
+          usernamePubEd.set(name, pubEd);
+          console.log(`auth: bound ${name} to ed25519 key`);
+        }
 
         const existing = users.get(name);
         if (existing && existing !== ws) {

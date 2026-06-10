@@ -14,12 +14,30 @@
 //                                 skipped silently and the server behaves
 //                                 exactly like before.
 //   FCM_SERVICE_ACCOUNT_FILE   — alternative: path to a JSON file on disk.
+//
+//   --- Password-recovery email (optional) ---
+//   SMTP_HOST                  — SMTP relay host (e.g. smtp.gmail.com,
+//                                 smtp-relay.brevo.com). When unset, password
+//                                 reset codes are LOGGED to console only.
+//                                 That mode is fine for dev/staging — the
+//                                 admin can read the code from Render's
+//                                 Logs view and pass it to the user — but
+//                                 NOT suitable for real users.
+//   SMTP_PORT                  — usually 587 (STARTTLS) or 465 (TLS). Default 587.
+//   SMTP_USER                  — auth username (often the from address).
+//   SMTP_PASS                  — auth password / app password / API key.
+//   SMTP_FROM                  — From: header on outgoing mail. Required if SMTP_HOST set.
+//   SMTP_FROM_NAME             — display name for the From: header. Default "SecureComm".
 
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const WebSocket = require('ws');
+let nodemailer = null;
+try { nodemailer = require('nodemailer'); } catch (e) {
+  console.warn('nodemailer not installed; password-reset email will be log-only');
+}
 
 const PORT = process.env.PORT || 8080;
 
@@ -74,6 +92,100 @@ try {
   console.log('FCM: disabled (' + err.message + ')');
 }
 
+// ----- SMTP transport (optional) -----
+// Used to email password-reset codes. If unconfigured, codes are written
+// to the console and the operator can deliver them manually — fine for
+// staging, never for production. Any nodemailer-compatible relay works;
+// Gmail (app password), Brevo's free tier, Postmark, etc.
+let smtp = null;
+if (nodemailer && process.env.SMTP_HOST) {
+  try {
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+    smtp = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: smtpPort,
+      // Port 465 is implicit-TLS; everything else (typically 587) uses STARTTLS.
+      secure: smtpPort === 465,
+      auth: (process.env.SMTP_USER && process.env.SMTP_PASS) ? {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      } : undefined,
+    });
+    console.log(`SMTP: enabled via ${process.env.SMTP_HOST}:${smtpPort}`);
+  } catch (e) {
+    smtp = null;
+    console.log('SMTP: disabled (' + e.message + ')');
+  }
+} else {
+  console.log('SMTP: disabled (no SMTP_HOST configured; reset codes will be logged only)');
+}
+
+function sendPasswordResetEmail(toEmail, username, code) {
+  // Either send for real, or log the code so the operator can read it
+  // off the Render dashboard and pass it along. The user-facing
+  // response is the same in both modes — we never tell the requester
+  // which transport happened, so log-only mode doesn't leak info.
+  if (!smtp) {
+    console.log(`[password reset] code for ${username} (${toEmail}): ${code}`);
+    return Promise.resolve();
+  }
+  const fromAddr = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const fromName = process.env.SMTP_FROM_NAME || 'SecureComm';
+  return smtp.sendMail({
+    from: `"${fromName}" <${fromAddr}>`,
+    to: toEmail,
+    subject: 'Your SecureComm password reset code',
+    text:
+      `Someone (hopefully you) requested a password reset for the SecureComm ` +
+      `account "${username}".\n\n` +
+      `Your reset code is: ${code}\n\n` +
+      `This code expires in 30 minutes. If you didn't request this, you can ignore this email.\n`,
+  }).then(() => {
+    console.log(`[password reset] emailed ${username} -> ${toEmail}`);
+  }).catch((err) => {
+    console.log(`[password reset] SMTP send failed for ${username}: ${err.message}`);
+    // We log the code as a fallback so the user isn't completely stuck
+    // when SMTP is misconfigured. This is the only path where we both
+    // attempted SMTP AND log — visible to operators only.
+    console.log(`[password reset] fallback code for ${username} (${toEmail}): ${code}`);
+  });
+}
+
+function generateResetCode() {
+  // 12 chars from an unambiguous alphabet (no 0/O/I/L/1) — ~60 bits of
+  // entropy, easy to type from an email body or paper.
+  const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = '';
+  const buf = crypto.randomBytes(12);
+  for (let i = 0; i < 12; i++) out += ALPHA[buf[i] % ALPHA.length];
+  return out;
+}
+
+// Reads a JSON body up to 16 KB and parses it. Calls cb(error, parsed).
+// Used by the password-reset HTTP endpoints.
+function readJsonBody(req, cb) {
+  let len = 0;
+  const chunks = [];
+  req.on('data', (c) => {
+    len += c.length;
+    if (len > 16 * 1024) {
+      req.destroy();
+      cb('too large');
+      return;
+    }
+    chunks.push(c);
+  });
+  req.on('end', () => {
+    try {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+      cb(null, body);
+    } catch (e) {
+      cb('bad json');
+    }
+  });
+  req.on('error', () => cb('read error'));
+}
+
 // ----- HTTP server (for healthchecks + media + WebSocket upgrade) -----
 const httpServer = http.createServer((req, res) => {
   if (req.url === '/health') {
@@ -82,7 +194,82 @@ const httpServer = http.createServer((req, res) => {
       ok: true,
       online: users.size,
       fcm: !!fcm,
+      smtp: !!smtp,
     }));
+    return;
+  }
+
+  // Password reset endpoints. POST JSON; respond with JSON. Kept on HTTP
+  // (rather than the WebSocket) because the user is by definition not
+  // logged in — the WebSocket would auto-register them, which is the
+  // wrong abstraction here. CORS is wide-open since the only callers
+  // are the Android clients.
+  if (req.method === 'POST' && req.url === '/password-reset/request') {
+    readJsonBody(req, (err, body) => {
+      if (err) { res.writeHead(400); res.end(err); return; }
+      const name  = ((body.username || '') + '').trim().toLowerCase();
+      const email = ((body.email    || '') + '').trim().toLowerCase();
+      if (!name || !email) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ sent: false, reason: 'invalid' }));
+        return;
+      }
+      const storedEmail = usernameEmail.get(name);
+      if (!storedEmail || storedEmail !== email) {
+        // Generic response (sent:true) regardless of whether the
+        // account/email actually matched — avoids leaking which
+        // usernames are registered. Logs distinguish the cases for
+        // the operator.
+        console.log(`reset request rejected for ${name} (email mismatch or no account)`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ sent: true }));
+        return;
+      }
+      for (const [code, info] of passwordResetCodes) {
+        if (info.username === name) passwordResetCodes.delete(code);
+      }
+      const code = generateResetCode();
+      passwordResetCodes.set(code, {
+        username: name,
+        expiresAt: Date.now() + RESET_CODE_TTL_MS,
+      });
+      sendPasswordResetEmail(email, name, code);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ sent: true }));
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/password-reset/complete') {
+    readJsonBody(req, (err, body) => {
+      if (err) { res.writeHead(400); res.end(err); return; }
+      const code = ((body.code || '') + '').trim().toUpperCase();
+      const newAuthKey = body.new_auth_key;
+      if (!code || !newAuthKey) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, reason: 'invalid' }));
+        return;
+      }
+      const entry = passwordResetCodes.get(code);
+      if (!entry || entry.expiresAt < Date.now()) {
+        passwordResetCodes.delete(code);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, reason: 'bad_or_expired_code' }));
+        return;
+      }
+      usernameAuthKey.set(entry.username, newAuthKey);
+      passwordResetCodes.delete(code);
+      // Force-logout any current session so they re-sign in with the new password.
+      const live = users.get(entry.username);
+      if (live) {
+        send(live, { type: 'force_logout', reason: 'password_reset' });
+        try { live.username = null; live.terminate(); } catch (e) {}
+        users.delete(entry.username);
+      }
+      console.log(`password reset completed for ${entry.username}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
     return;
   }
 
@@ -166,6 +353,23 @@ const pubKeys = new Map();
 // are rejected with "username_taken_by_another_device". Lives in memory
 // only — server restart releases all bindings.
 const usernamePubEd = new Map();
+// username -> base64 PBKDF2 verifier of the user's password. Set on
+// first sign-up; required to match on every subsequent register.
+// Combined with usernamePubEd, this gives "something you know"
+// (password) + "something you have" (device's Ed25519 private key).
+// Also in-memory only; a server restart wipes everything.
+const usernameAuthKey = new Map();
+// username -> email address (lowercased). Used only for password-reset
+// delivery. Set on first sign-up; updated on subsequent registers if
+// the user supplies a new value AND the existing password/sig check
+// succeeds (so an attacker can't change another user's recovery email
+// without knowing their password).
+const usernameEmail = new Map();
+// resetCode -> { username, expiresAt }. Tokens are generated when a
+// user asks for a password reset and consumed when they submit the
+// new password. Single-use; expired entries are cleaned on access.
+const passwordResetCodes = new Map();
+const RESET_CODE_TTL_MS = 30 * 60 * 1000;  // 30 minutes
 // callId -> { caller, callee, peers:Set }
 const calls = new Map();
 // username -> array of pending chat messages {id, from, ciphertext, ts}
@@ -353,14 +557,21 @@ wss.on('connection', (ws) => {
       // --- Registration: client announces its username and proves ownership
       // by signing a challenge with an Ed25519 key the server has on file
       // for this username (or which it stores as authoritative on first use).
+      // Also verifies a password-derived auth_key, which gives the user
+      // a recoverable secret (password) on top of the device-bound key.
       case 'register': {
         const name    = (msg.username || '').trim().toLowerCase();
         const pubEd   = msg.pubkey_ed;     // base64 raw 32-byte ed25519 public key
         const authTs  = msg.auth_ts;       // ms since epoch
         const authSig = msg.auth_sig;      // base64 ed25519 signature
+        const authKey = msg.auth_key;      // base64 32-byte PBKDF2(password, "p2pvoice-"+username)
+        const email   = (msg.email || '').trim().toLowerCase();   // recovery email, optional but recommended
         if (!name) { send(ws, { type: 'register_error', reason: 'empty' }); return; }
         if (!pubEd || typeof authTs !== 'number' || !authSig) {
           send(ws, { type: 'register_error', reason: 'auth_missing' }); return;
+        }
+        if (!authKey) {
+          send(ws, { type: 'register_error', reason: 'password_missing' }); return;
         }
 
         // Reject stale/replayed challenges. ±5 minutes of server clock.
@@ -395,20 +606,46 @@ wss.on('connection', (ws) => {
           send(ws, { type: 'register_error', reason: 'auth_failed' }); return;
         }
 
-        // Username binding: the FIRST device to register a username wins
-        // and from then on only signatures from that same Ed25519 key can
-        // re-register as that username. NOTE: this binding lives only in
-        // memory; a process restart wipes it. Persistent storage is a
-        // follow-up (see THREAT_MODEL §6 + roadmap).
-        const boundPubEd = usernamePubEd.get(name);
-        if (boundPubEd && boundPubEd !== pubEd) {
-          console.log(`auth: rejected ${name} — different ed25519 key`);
-          send(ws, { type: 'register_error', reason: 'username_taken_by_another_device' });
+        // Password verification: the client sends a 32-byte key derived
+        // from PBKDF2(password, "p2pvoice-"+username, 200k iter, SHA-256).
+        // The server stores this verifier verbatim on first sign-up; on
+        // every subsequent register the values must match. The server
+        // never sees the plaintext password.
+        const boundAuthKey = usernameAuthKey.get(name);
+        if (boundAuthKey && boundAuthKey !== authKey) {
+          console.log(`auth: rejected ${name} — wrong password`);
+          send(ws, { type: 'register_error', reason: 'wrong_password' });
           return;
         }
+        if (!boundAuthKey) {
+          usernameAuthKey.set(name, authKey);
+          console.log(`auth: bound ${name} password verifier`);
+        }
+
+        // Username/device binding. Password matched (or just bound), so:
+        //   - same Ed25519 key      → routine re-login on the same device
+        //   - different Ed25519 key → device migration. User reinstalled
+        //     on a new phone and proved ownership via password; rebind
+        //     usernamePubEd to the new key. Peers will see a key rotation
+        //     and the SAS will change — that's expected and intentional.
+        const boundPubEd = usernamePubEd.get(name);
         if (!boundPubEd) {
           usernamePubEd.set(name, pubEd);
           console.log(`auth: bound ${name} to ed25519 key`);
+        } else if (boundPubEd !== pubEd) {
+          usernamePubEd.set(name, pubEd);
+          console.log(`auth: device migration for ${name} (password ok, new ed25519 key)`);
+        }
+
+        // Update recovery email if provided. Only happens here, after
+        // password + signature have been verified, so an attacker can't
+        // hijack a recovery email without knowing the password.
+        if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          const prev = usernameEmail.get(name);
+          if (prev !== email) {
+            usernameEmail.set(name, email);
+            console.log(`recovery email ${prev ? 'updated' : 'set'} for ${name}`);
+          }
         }
 
         const existing = users.get(name);

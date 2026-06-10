@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Call screen, both audio and video. Layout principle:
+   - Full-screen remoteVideo SurfaceViewRenderer at z=0. Hidden for audio.
+   - Audio-only fallback: a vertical block in the centre with avatar + name.
+   - localVideoFrame: small overlay top-right showing the local camera.
+   - Bottom controls: mute, speaker, end-call, switch-camera, video-toggle.
+
+  The video- and audio-only views are toggled at runtime in CallActivity
+  based on isVideoCall.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_app">
+
+    <!-- Remote video, full-bleed. setBackgroundColor at runtime keeps the
+         frame black before the first frame arrives. -->
+    <org.webrtc.SurfaceViewRenderer
+        android:id="@+id/remoteVideo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <!-- Audio-only centre block: avatar + name + status. Visibility flipped
+         in code: shown for audio calls; for video calls it stays visible
+         briefly until the remote frame starts. -->
+    <LinearLayout
+        android:id="@+id/audioBlock"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="24dp">
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="0.6" />
+
+        <TextView
+            android:id="@+id/tvCallAvatar"
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:gravity="center"
+            android:text="A"
+            android:textColor="@color/text_on_accent"
+            android:textSize="48sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_avatar" />
+
+        <TextView
+            android:id="@+id/tvCallName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Name"
+            android:textColor="@color/text_primary"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:layout_marginTop="24dp" />
+
+        <TextView
+            android:id="@+id/tvCallStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Calling..."
+            android:textColor="@color/text_dim"
+            android:textSize="16sp"
+            android:layout_marginTop="8dp"
+            android:gravity="center" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1.6" />
+    </LinearLayout>
+
+    <!-- Local preview overlay (video calls only). Top-right corner, small
+         enough to not block the remote feed. Rounded background drawn via
+         padding + view-clipping in code, fine without rounding for v1. -->
+    <FrameLayout
+        android:id="@+id/localVideoFrame"
+        android:layout_width="100dp"
+        android:layout_height="140dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="60dp"
+        android:layout_marginEnd="16dp"
+        android:background="@android:color/black"
+        android:visibility="gone">
+        <org.webrtc.SurfaceViewRenderer
+            android:id="@+id/localVideo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
+
+    <!-- Bottom controls container. Anchored to the bottom edge regardless
+         of audio/video state; only the *contents* shift. -->
+    <LinearLayout
+        android:id="@+id/bottomControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- Top row: mute / speaker / switch-camera / toggle-video. Each is a
+             round button (background applied at runtime to colour by state). -->
+        <LinearLayout
+            android:id="@+id/activeControls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="14dp">
+
+            <Button
+                android:id="@+id/btnMute"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_input"
+                android:text="Mute"
+                android:textColor="@color/text_primary"
+                android:textAllCaps="false"
+                android:paddingHorizontal="22dp" />
+
+            <Button
+                android:id="@+id/btnSpeaker"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_input"
+                android:text="Speaker"
+                android:textColor="@color/text_primary"
+                android:textAllCaps="false"
+                android:paddingHorizontal="16dp"
+                android:layout_marginStart="8dp" />
+
+            <Button
+                android:id="@+id/btnSwitchCam"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_input"
+                android:text="Flip"
+                android:textColor="@color/text_primary"
+                android:textAllCaps="false"
+                android:paddingHorizontal="16dp"
+                android:layout_marginStart="8dp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnVideoToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_input"
+                android:text="Video"
+                android:textColor="@color/text_primary"
+                android:textAllCaps="false"
+                android:paddingHorizontal="16dp"
+                android:layout_marginStart="8dp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Incoming-call accept/reject row -->
+        <LinearLayout
+            android:id="@+id/incomingButtons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp">
+
+            <Button
+                android:id="@+id/btnReject"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="60dp"
+                android:background="@drawable/bg_button_red"
+                android:text="Decline"
+                android:textColor="@color/text_on_accent"
+                android:textStyle="bold"
+                android:textAllCaps="false"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnAccept"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="60dp"
+                android:background="@drawable/bg_button_green"
+                android:text="Accept"
+                android:textColor="@color/text_on_accent"
+                android:textStyle="bold"
+                android:textAllCaps="false"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnEnd"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@drawable/bg_button_red"
+            android:text="End Call"
+            android:textColor="@color/text_on_accent"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textAllCaps="false" />
+    </LinearLayout>
+
+</FrameLayout>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default colors = LIGHT theme. The dark variant lives in values-night/
+  and gets selected automatically when the system / user is in dark mode.
+  Every layout and drawable references these by name (e.g. @color/text_primary)
+  so the same XML renders correctly in both themes.
+
+  Naming convention:
+    bg_*        = surfaces (the colour of containers, panels, inputs)
+    text_*      = text colours, in decreasing prominence
+    accent_*    = action colours (links, danger, success, warnings)
+    bubble_*    = chat-bubble surfaces (kept separate from generic bg_*
+                  so we can theme them independently if needed)
+-->
+<resources>
+    <!-- Surfaces -->
+    <color name="bg_app">#FFFFFF</color>
+    <color name="bg_toolbar">#FFFFFF</color>
+    <color name="bg_surface">#F0F2F5</color>
+    <color name="bg_input">#EEEFF2</color>
+    <color name="bg_bubble_in">#F0F2F5</color>
+    <color name="bg_bubble_out">#2E5BFF</color>
+
+    <!-- Text -->
+    <color name="text_primary">#0C1018</color>
+    <color name="text_secondary">#5A6376</color>
+    <color name="text_dim">#7C8597</color>
+    <color name="text_muted">#A8AEBC</color>
+    <color name="text_on_accent">#FFFFFF</color>
+    <color name="text_on_bubble_out">#FFFFFF</color>
+    <color name="text_on_bubble_in">#0C1018</color>
+
+    <!-- Accents -->
+    <color name="accent_primary">#2E5BFF</color>
+    <color name="accent_link">#2E5BFF</color>
+    <color name="accent_danger">#E03A4A</color>
+    <color name="accent_success">#1A8A4A</color>
+    <color name="accent_warn">#C77E17</color>
+
+    <!-- Lines & dividers -->
+    <color name="divider">#DCDEE3</color>
+
+    <!-- Status / connectivity dots -->
+    <color name="conn_offline">#E03A4A</color>
+    <color name="conn_online">#1A8A4A</color>
+
+    <!-- Reply quote bg (slightly different from bubble bg) -->
+    <color name="bg_quote">#E5E7EB</color>
+</resources>

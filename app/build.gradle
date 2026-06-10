@@ -1,0 +1,83 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Apply the Google Services plugin only if app/google-services.json has been
+// dropped in. This lets the project build before you've set up Firebase, with
+// FCM features simply inactive until you add the config file.
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
+
+android {
+    namespace 'com.example.p2pvoice'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.p2pvoice"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    // Build separate APKs per CPU architecture. Each per-ABI APK is ~25 MB
+    // instead of ~80 MB for a universal build that ships native libs for
+    // every CPU. Android Studio's Run automatically picks the right APK for
+    // the connected device.
+    // Add 'x86_64' to the include list below if you also need emulator support.
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        viewBinding true
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    // Reading EXIF orientation so uploaded photos display upright.
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+
+    // libwebrtc prebuilt (AEC3, noise suppression, AGC + FrameCryptor for E2EE)
+    implementation 'io.github.webrtc-sdk:android:125.6422.07'
+
+    // WebSocket client for signaling
+    implementation 'org.java-websocket:Java-WebSocket:1.5.7'
+
+    // JSON
+    implementation 'org.json:json:20240303'
+
+    // Firebase Cloud Messaging — push notifications to wake the app for
+    // incoming calls when it isn't running.
+    implementation platform('com.google.firebase:firebase-bom:33.3.0')
+    implementation 'com.google.firebase:firebase-messaging'
+    // (Encrypted image transfer uses the local signaling server, not Firebase
+    // Storage — see MediaTransfer.)
+
+    // Tink — Google's audited crypto library. Used for X25519 key agreement
+    // between peers (per-conversation E2EE keys) and AES-GCM AEAD on message
+    // bodies. Chosen over rolling our own crypto because constant-time
+    // implementations of curve25519 are non-trivial and Tink has been
+    // production-hardened.
+    implementation 'com.google.crypto.tink:tink-android:1.14.1'
+}

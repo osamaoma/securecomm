@@ -1,0 +1,43 @@
+# Render Blueprint — defines the SecureComm signaling service as code.
+#
+# To use: in the Render dashboard, New + → Blueprint → connect this repo.
+# Render parses this file and provisions everything. After the first apply,
+# any push to `main` redeploys automatically.
+#
+# Secret values (FCM service account) are NOT in this file — they're set
+# once in the dashboard. The `sync: false` flag below tells Render to ask
+# you for them on first apply and keep them out of git forever.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: securecomm-signaling
+    runtime: node
+    region: frankfurt           # change to: oregon, ohio, virginia, singapore as needed
+    plan: starter               # $7/mo, always-on, WebSocket-capable
+    rootDir: server             # this file lives in server/ alongside server.js
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true            # redeploy on push to `branch`
+    branch: main
+
+    # Persistent disk for the encrypted media store.
+    # Without this, every redeploy wipes pending media (images, voice msgs)
+    # that haven't been picked up by recipients yet. The 7-day GC in
+    # server.js still runs on top of the disk.
+    disk:
+      name: media-store
+      mountPath: /opt/render/project/src/media-store
+      sizeGB: 1                 # $0.25/mo; bump when you have real users
+
+    envVars:
+      # Render injects PORT automatically — the server already reads it.
+      # Set only the FCM credential here. `sync: false` means Render will
+      # prompt for the value on first apply and never write it to git.
+      - key: FCM_SERVICE_ACCOUNT_JSON
+        sync: false
+      # Optional: set NODE_ENV so any future code paths can branch.
+      - key: NODE_ENV
+        value: production

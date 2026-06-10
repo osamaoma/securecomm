@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- The "docs" subdir under cacheDir is where MediaTransfer.downloadDocument
+         writes decrypted file bytes. We expose only that one subdir to keep
+         the surface area minimal — viewer apps can't see anything else. -->
+    <cache-path name="docs" path="docs/" />
+</paths>

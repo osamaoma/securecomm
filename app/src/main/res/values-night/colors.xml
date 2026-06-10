@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DARK theme overrides. Names must match values/colors.xml exactly.
+  These values reproduce the original hand-tuned dark palette the app
+  shipped with, so existing users see no visual change when they leave
+  the theme on "follow system" + their phone in dark mode.
+-->
+<resources>
+    <!-- Surfaces -->
+    <color name="bg_app">#07090E</color>
+    <color name="bg_toolbar">#0C1018</color>
+    <color name="bg_surface">#152033</color>
+    <color name="bg_input">#1A2233</color>
+    <color name="bg_bubble_in">#1A2335</color>
+    <color name="bg_bubble_out">#2E5BFF</color>
+
+    <!-- Text -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#A8AEBC</color>
+    <color name="text_dim">#7C8597</color>
+    <color name="text_muted">#5A6376</color>
+    <color name="text_on_accent">#FFFFFF</color>
+    <color name="text_on_bubble_out">#FFFFFF</color>
+    <color name="text_on_bubble_in">#FFFFFF</color>
+
+    <!-- Accents -->
+    <color name="accent_primary">#2E5BFF</color>
+    <color name="accent_link">#4F8DFF</color>
+    <color name="accent_danger">#E03A4A</color>
+    <color name="accent_success">#22A45D</color>
+    <color name="accent_warn">#E6A23C</color>
+
+    <!-- Lines & dividers -->
+    <color name="divider">#1F2533</color>
+
+    <!-- Status / connectivity dots -->
+    <color name="conn_offline">#E03A4A</color>
+    <color name="conn_online">#22A45D</color>
+
+    <!-- Reply quote bg -->
+    <color name="bg_quote">#22293A</color>
+</resources>

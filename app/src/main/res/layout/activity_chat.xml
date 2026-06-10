@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="12dp"
+        android:background="@color/bg_toolbar">
+
+        <TextView
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="\u2190"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:padding="6dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+
+        <FrameLayout
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp">
+
+            <TextView
+                android:id="@+id/tvHeaderAvatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="?"
+                android:textColor="@color/text_on_accent"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_avatar" />
+
+            <ImageView
+                android:id="@+id/imgHeaderAvatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                android:contentDescription="@null" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="10dp">
+
+            <TextView
+                android:id="@+id/tvPeer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="peer"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvSecurity"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="\ud83d\udd12 secure"
+                android:textColor="@color/accent_success"
+                android:textSize="11sp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btnCallFromChat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Voice"
+            android:textColor="@color/text_on_accent"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:background="@drawable/bg_button" />
+
+        <TextView
+            android:id="@+id/btnVideoCallFromChat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Video"
+            android:textColor="@color/text_on_accent"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_button" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvMessages"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:clipToPadding="false" />
+
+    <TextView
+        android:id="@+id/tvEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="No messages yet — say hi!"
+        android:textColor="@color/text_muted"
+        android:textSize="15sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/replyBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:background="@color/bg_surface"
+        android:visibility="gone">
+
+        <View
+            android:layout_width="3dp"
+            android:layout_height="36dp"
+            android:background="@color/accent_link" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="10dp">
+
+            <TextView
+                android:id="@+id/tvReplyAuthor"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Replying to peer"
+                android:textColor="@color/accent_link"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvReplyPreview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btnCancelReply"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✕"
+            android:textColor="@color/text_secondary"
+            android:textSize="18sp"
+            android:padding="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+
+    <!-- Shown when this 1-on-1 contact is blocked. The composer stays
+         visible but its inputs are disabled, and tapping Unblock here is
+         a quick path back to a normal chat. -->
+    <LinearLayout
+        android:id="@+id/blockedBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp"
+        android:background="@color/bg_input"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="You blocked this contact. Their messages and calls are dropped."
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btnUnblock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Unblock"
+            android:textColor="@color/accent_link"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:padding="6dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/recordingBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:background="@color/bg_input"
+        android:visibility="gone">
+
+        <View
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:background="@drawable/bg_recording_dot" />
+
+        <TextView
+            android:id="@+id/tvRecordingTimer"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Recording…  0:00"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:layout_marginStart="10dp" />
+
+        <TextView
+            android:id="@+id/btnCancelRecord"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✕  Cancel"
+            android:textColor="@color/accent_danger"
+            android:textSize="13sp"
+            android:padding="6dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="10dp"
+        android:background="@color/bg_toolbar">
+
+        <TextView
+            android:id="@+id/btnAttach"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+"
+            android:textColor="@color/text_primary"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:minWidth="44dp"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="10dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Attach image" />
+
+        <EditText
+            android:id="@+id/etText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Message"
+            android:textColorHint="@color/text_muted"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/bg_input"
+            android:padding="12dp"
+            android:maxLines="4"
+            android:inputType="textCapSentences|textMultiLine"
+            android:imeOptions="actionSend" />
+
+        <TextView
+            android:id="@+id/btnMic"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎤"
+            android:textSize="22sp"
+            android:minWidth="44dp"
+            android:gravity="center"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="10dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Hold to record voice message"
+            android:layout_marginStart="2dp" />
+
+        <TextView
+            android:id="@+id/btnSend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Send"
+            android:textColor="@color/text_on_accent"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="18dp"
+            android:paddingVertical="12dp"
+            android:background="@drawable/bg_button"
+            android:layout_marginStart="8dp" />
+    </LinearLayout>
+</LinearLayout>

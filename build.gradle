@@ -1,0 +1,7 @@
+// Top-level build file
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+    // Google Services plugin processes the google-services.json file you'll
+    // download from the Firebase console and place at app/google-services.json
+    id 'com.google.gms.google-services' version '4.4.2' apply false
+}

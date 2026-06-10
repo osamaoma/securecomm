@@ -1,0 +1,5 @@
+node_modules/ 
+media-store/ 
+"*.json" 
+"!package.json" 
+"!package-lock.json" 

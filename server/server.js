@@ -311,6 +311,34 @@ function flushPending(username, ws) {
   console.log(`flushed ${queue.length} queued message(s) to ${username}`);
 }
 
+// Robust message delivery. Always queues to pendingMessages and ALSO
+// attempts a live send if the recipient is online. This protects against
+// the message-loss race where the server writes to a half-open WebSocket
+// (the client's socket has died but the server hasn't noticed yet) just
+// before the client reconnects. Without queuing, those writes are lost
+// to the dying TCP buffer and the new WS never sees them.
+//
+// On the next register from the recipient, flushPending re-sends the
+// queue. Client-side idempotency handles duplicates:
+//   - chat_msg: Store.putMessage replaces by id
+//   - contact_request_in: Store.putIncomingContactRequest replaces by from
+//   - profile_msg: ProfileManager keeps only the newer version
+//   - group_event_msg: roster ops idempotent
+// The 200-message cap and flushPending's queue-delete keep memory bounded.
+// Returns 'live' if the recipient was online, 'queued' otherwise.
+function deliverOrQueue(to, envelope) {
+  let q = pendingMessages.get(to);
+  if (!q) { q = []; pendingMessages.set(to, q); }
+  q.push(envelope);
+  if (q.length > MAX_QUEUE_PER_USER) q.shift();
+  const recipientWs = users.get(to);
+  if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
+    send(recipientWs, envelope);
+    return 'live';
+  }
+  return 'queued';
+}
+
 wss.on('connection', (ws) => {
   ws.username = null;
   ws.isAlive = true;
@@ -481,19 +509,15 @@ wss.on('connection', (ws) => {
         if (msg.replyTo)   envelope.replyTo = msg.replyTo;
         if (msg.forwarded) envelope.forwarded = true;
         if (msg.groupId)   envelope.groupId = msg.groupId;
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
+        const status = deliverOrQueue(to, envelope);
+        if (status === 'live') {
           send(ws, { type: 'chat_ack', id, status: 'sent' });
           console.log(`chat ${ws.username} -> ${to} (delivered)`);
         } else {
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
+          const queueLen = (pendingMessages.get(to) || []).length;
           send(ws, { type: 'chat_ack', id, status: 'queued' });
-          pushChatMessage(to, ws.username, q.length);
-          console.log(`chat ${ws.username} -> ${to} (queued, ${q.length} pending)`);
+          pushChatMessage(to, ws.username, queueLen);
+          console.log(`chat ${ws.username} -> ${to} (queued, ${queueLen} pending)`);
         }
         break;
       }
@@ -517,19 +541,8 @@ wss.on('connection', (ws) => {
           ts: Date.now(),
         };
         if (msg.groupId) envelope.groupId = msg.groupId;
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
-          console.log(`chat_edit ${ws.username} -> ${to}`);
-        } else {
-          // Use the same offline queue as chat_send so the edit follows
-          // the original message into the recipient's catch-up batch.
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
-          console.log(`chat_edit ${ws.username} -> ${to} (queued)`);
-        }
+        const status = deliverOrQueue(to, envelope);
+        console.log(`chat_edit ${ws.username} -> ${to}${status === 'queued' ? ' (queued)' : ''}`);
         break;
       }
 
@@ -548,17 +561,8 @@ wss.on('connection', (ws) => {
           ts: Date.now(),
         };
         if (msg.groupId) envelope.groupId = msg.groupId;
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
-          console.log(`chat_delete ${ws.username} -> ${to}`);
-        } else {
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
-          console.log(`chat_delete ${ws.username} -> ${to} (queued)`);
-        }
+        const status = deliverOrQueue(to, envelope);
+        console.log(`chat_delete ${ws.username} -> ${to}${status === 'queued' ? ' (queued)' : ''}`);
         break;
       }
 
@@ -580,17 +584,8 @@ wss.on('connection', (ws) => {
           displayName,
           ts: Date.now(),
         };
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
-          console.log(`contact_request ${ws.username} -> ${to}`);
-        } else {
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
-          console.log(`contact_request ${ws.username} -> ${to} (queued)`);
-        }
+        const status = deliverOrQueue(to, envelope);
+        console.log(`contact_request ${ws.username} -> ${to}${status === 'queued' ? ' (queued)' : ''}`);
         break;
       }
 
@@ -608,17 +603,8 @@ wss.on('connection', (ws) => {
           displayName,
           ts: Date.now(),
         };
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
-          console.log(`contact_accept ${ws.username} -> ${to}`);
-        } else {
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
-          console.log(`contact_accept ${ws.username} -> ${to} (queued)`);
-        }
+        const status = deliverOrQueue(to, envelope);
+        console.log(`contact_accept ${ws.username} -> ${to}${status === 'queued' ? ' (queued)' : ''}`);
         break;
       }
 
@@ -741,19 +727,15 @@ wss.on('connection', (ws) => {
         if (msg.forwarded)  envelope.forwarded = true;
         if (msg.groupId)    envelope.groupId = msg.groupId;
 
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
+        const status = deliverOrQueue(to, envelope);
+        if (status === 'live') {
           send(ws, { type: 'media_ack', id, status: 'sent' });
           console.log(`media ${ws.username} -> ${to} (delivered)`);
         } else {
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
+          const queueLen = (pendingMessages.get(to) || []).length;
           send(ws, { type: 'media_ack', id, status: 'queued' });
-          pushChatMessage(to, ws.username, q.length);  // same wake-up mechanism
-          console.log(`media ${ws.username} -> ${to} (queued, ${q.length} pending)`);
+          pushChatMessage(to, ws.username, queueLen);
+          console.log(`media ${ws.username} -> ${to} (queued, ${queueLen} pending)`);
         }
         break;
       }
@@ -779,16 +761,13 @@ wss.on('connection', (ws) => {
           ts: Date.now(),
         };
         if (msg.payloadCt) envelope.payloadCt = msg.payloadCt;
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
-          console.log(`group_event ${ws.username} -> ${to} (${event} ${groupId})`);
-        } else {
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          // Coalesce: drop any older invite/update from the same sender for
-          // the same group — the newest carries the latest roster + key.
-          if (event === 'invite' || event === 'update') {
+        // Coalesce invite/update events: drop any older invite/update from
+        // the same sender for the same group from the pending queue — the
+        // newest carries the latest roster + key. Done before we add the
+        // new envelope so the queue ends up with only the newest.
+        if (event === 'invite' || event === 'update') {
+          const q = pendingMessages.get(to);
+          if (q) {
             for (let i = q.length - 1; i >= 0; i--) {
               const e = q[i];
               if (e.type === 'group_event_msg'
@@ -799,10 +778,9 @@ wss.on('connection', (ws) => {
               }
             }
           }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
-          console.log(`group_event ${ws.username} -> ${to} (queued ${event})`);
         }
+        const status = deliverOrQueue(to, envelope);
+        console.log(`group_event ${ws.username} -> ${to} (${event} ${groupId}${status === 'queued' ? ', queued' : ''})`);
         break;
       }
 
@@ -824,23 +802,16 @@ wss.on('connection', (ws) => {
           version: msg.version || Date.now(),
           ts: Date.now(),
         };
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
-          console.log(`profile ${ws.username} -> ${to} (delivered)`);
-        } else {
-          // Profile updates are useful when the peer comes back online; queue them.
-          // To avoid stale spam, only keep the latest profile_msg from each sender.
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          // Drop any older profile_msg from the same sender; keep only the newest.
+        // Coalesce: drop any older profile_msg from the same sender before
+        // queuing the new one. Keeps the queue from holding stale profiles.
+        const q = pendingMessages.get(to);
+        if (q) {
           for (let i = q.length - 1; i >= 0; i--) {
             if (q[i].type === 'profile_msg' && q[i].from === ws.username) q.splice(i, 1);
           }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
-          console.log(`profile ${ws.username} -> ${to} (queued)`);
         }
+        const status = deliverOrQueue(to, envelope);
+        console.log(`profile ${ws.username} -> ${to}${status === 'queued' ? ' (queued)' : ' (delivered)'}`);
         break;
       }
 
@@ -862,17 +833,8 @@ wss.on('connection', (ws) => {
           ts: Date.now(),
         };
         if (msg.groupId) envelope.groupId = msg.groupId;
-        const recipientWs = users.get(to);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          send(recipientWs, envelope);
-          console.log(`reaction ${ws.username} -> ${to} (${envelope.emoji || 'clear'})`);
-        } else {
-          let q = pendingMessages.get(to);
-          if (!q) { q = []; pendingMessages.set(to, q); }
-          q.push(envelope);
-          if (q.length > MAX_QUEUE_PER_USER) q.shift();
-          console.log(`reaction ${ws.username} -> ${to} (queued)`);
-        }
+        const status = deliverOrQueue(to, envelope);
+        console.log(`reaction ${ws.username} -> ${to} (${envelope.emoji || 'clear'}${status === 'queued' ? ', queued' : ''})`);
         break;
       }
 

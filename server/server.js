@@ -112,6 +112,15 @@ if (nodemailer && process.env.SMTP_HOST) {
       } : undefined,
     });
     console.log(`SMTP: enabled via ${process.env.SMTP_HOST}:${smtpPort}`);
+    // Probe the transport at startup so the operator sees in the logs
+    // immediately whether credentials and host are correct — much easier
+    // than chasing a silent failure on the first reset attempt.
+    smtp.verify().then(() => {
+      console.log('SMTP: verified, transport ready');
+    }).catch((err) => {
+      console.log('SMTP: configured but verify FAILED: ' + err.message
+          + ' (check SMTP_USER / SMTP_PASS / port / host)');
+    });
   } catch (e) {
     smtp = null;
     console.log('SMTP: disabled (' + e.message + ')');

@@ -126,7 +126,13 @@ if (nodemailer && process.env.SMTP_HOST) {
     console.log('SMTP: disabled (' + e.message + ')');
   }
 } else {
-  console.log('SMTP: disabled (no SMTP_HOST configured; reset codes will be logged only)');
+  if (!nodemailer) {
+    console.log('SMTP: disabled (nodemailer module not installed — '
+        + 'run `npm install` in the server/ directory, or trigger a '
+        + 'cache-clearing redeploy on Render)');
+  } else {
+    console.log('SMTP: disabled (no SMTP_HOST env var set; reset codes will be logged only)');
+  }
 }
 
 function sendPasswordResetEmail(toEmail, username, code) {
@@ -455,7 +461,7 @@ function endCallsFor(ws) {
 }
 
 // Send an FCM data message to wake the callee's app for an incoming call.
-async function pushIncomingCall(toUsername, fromUsername, callId) {
+async function pushIncomingCall(toUsername, fromUsername, callId, isVideo) {
   if (!fcm) return;
   const entry = fcmTokens.get(toUsername);
   if (!entry || !entry.token) return;
@@ -463,10 +469,17 @@ async function pushIncomingCall(toUsername, fromUsername, callId) {
     token: entry.token,
     // Data-only message (no `notification` field) so the Android service
     // handles it directly. Use high priority for immediate delivery.
+    //
+    // NOTE: FCM reserves a small set of data-payload keys for its own
+    // bookkeeping, and any payload that includes one is rejected with
+    // "Invalid data payload key". `from` is one of them (FCM uses it for
+    // the sending project id). We send the username as `sender` instead;
+    // PushService.java reads the same key on the client.
     data: {
       type: 'incoming_call',
-      from: fromUsername,
+      sender: fromUsername,
       callId: callId,
+      video: isVideo ? 'true' : 'false',
     },
     android: {
       priority: 'high',
@@ -495,9 +508,11 @@ async function pushChatMessage(toUsername, fromUsername, count) {
   if (!entry || !entry.token) return;
   const msg = {
     token: entry.token,
+    // Same reserved-key constraint as pushIncomingCall above: send
+    // sender, not from. PushService.handleChatWakeup reads `sender`.
     data: {
       type: 'chat',
-      from: fromUsername,
+      sender: fromUsername,
       count: String(count || 1),
     },
     android: {
@@ -1123,7 +1138,7 @@ wss.on('connection', (ws) => {
         // app is in background, the WS message above won't render UI fast
         // enough; the FCM push wakes it up and the WS message arrives once
         // the app reconnects.
-        pushIncomingCall(callee, ws.username, callId);
+        pushIncomingCall(callee, ws.username, callId, isVideo);
         send(ws, { type: 'calling', to: callee, callId, isVideo });
         console.log(`call ${ws.username} -> ${callee} (${callId}) video=${isVideo}`);
         break;
